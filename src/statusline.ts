@@ -194,26 +194,37 @@ export function rainbowThinking(level: string): string {
 	const isMax = level.endsWith("max") || level === "max";
 	return isMax ? `\x1b[1m${gradient}\x1b[22m` : gradient;
 }
-
 function resolveThinking(ctx: SegmentContext): string | null {
+	const sessionManager = ctx.session.sessionManager as unknown as {
+		getEntries?: () => Array<{ type: string; thinkingLevel?: string | null; configured?: string | null }>;
+	} | undefined;
+	if (sessionManager && typeof sessionManager.getEntries === "function") {
+		try {
+			const entries = sessionManager.getEntries();
+			for (let i = entries.length - 1; i >= 0; i--) {
+				const entry = entries[i];
+				if (entry?.type === "thinking_level_change") {
+					const configured = entry.configured ?? entry.thinkingLevel;
+					const realLevel = entry.thinkingLevel ?? "high";
+					if (configured === "auto") return `auto:${realLevel}`;
+					if (configured === "off" || entry.thinkingLevel === null) return "off";
+					if (configured) return configured;
+				}
+			}
+		} catch {}
+	}
+
 	const session = ctx.session as unknown as {
 		isAutoThinking?: boolean;
 		configuredThinkingLevel?: () => string;
 		autoResolvedThinkingLevel?: () => string;
 		thinkingLevel?: string;
 		state?: { thinkingLevel?: string; model?: { thinking?: boolean } };
-		sessionManager?: unknown;
 	};
 	if (session.isAutoThinking || (typeof session.configuredThinkingLevel === "function" && session.configuredThinkingLevel() === "auto")) {
 		const resolved = typeof session.autoResolvedThinkingLevel === "function" ? session.autoResolvedThinkingLevel() : undefined;
 		const effective = resolved ?? session.thinkingLevel ?? session.state?.thinkingLevel ?? "high";
 		return `auto:${effective}`;
-	}
-	const sessionManager = session.sessionManager as Record<string, unknown> | undefined;
-	const thinkingGetter = sessionManager?.getThinkingLevel as (() => string | undefined) | undefined;
-	if (typeof thinkingGetter === "function") {
-		const level = thinkingGetter.call(sessionManager);
-		if (level) return level;
 	}
 	const state = ctx.session.state;
 	if (state.thinkingLevel) return state.thinkingLevel;
@@ -433,6 +444,33 @@ export function valuesFromExtensionContext(ctx: ExtensionContext, pi?: Extension
 		cacheWrite: 0,
 	};
 	let thinking: string | null = null;
+
+	// 1. Check session transcript entries for latest thinking_level_change
+	const typedManager = sessionManager as unknown as {
+		getEntries?: () => Array<{ type: string; thinkingLevel?: string | null; configured?: string | null }>;
+	} | undefined;
+	if (typedManager && typeof typedManager.getEntries === "function") {
+		try {
+			const entries = typedManager.getEntries();
+			for (let i = entries.length - 1; i >= 0; i--) {
+				const entry = entries[i];
+				if (entry?.type === "thinking_level_change") {
+					const configured = entry.configured ?? entry.thinkingLevel;
+					const realLevel = entry.thinkingLevel ?? "high";
+					if (configured === "auto") {
+						thinking = `auto:${realLevel}`;
+					} else if (configured === "off" || entry.thinkingLevel === null) {
+						thinking = "off";
+					} else if (configured) {
+						thinking = configured;
+					}
+					break;
+				}
+			}
+		} catch {}
+	}
+
+	// 2. Check session object directly if available
 	const session = (ctx as unknown as {
 		session?: {
 			isAutoThinking?: boolean;
@@ -442,8 +480,7 @@ export function valuesFromExtensionContext(ctx: ExtensionContext, pi?: Extension
 			state?: { thinkingLevel?: string };
 		};
 	}).session;
-
-	if (session) {
+	if (!thinking && session) {
 		const configured = typeof session.configuredThinkingLevel === "function" ? session.configuredThinkingLevel() : undefined;
 		if (configured === "auto" || session.isAutoThinking) {
 			const resolved = typeof session.autoResolvedThinkingLevel === "function" ? session.autoResolvedThinkingLevel() : undefined;
@@ -457,20 +494,14 @@ export function valuesFromExtensionContext(ctx: ExtensionContext, pi?: Extension
 			thinking = session.state.thinkingLevel;
 		}
 	}
+
+	// 3. Fallback to pi.getThinkingLevel()
 	if (!thinking && pi && typeof pi.getThinkingLevel === "function") {
 		const level = pi.getThinkingLevel();
 		if (level) thinking = level as string;
 	}
 
-	if (!thinking) {
-		const ctxAny = ctx as unknown as Record<string, unknown>;
-		const ctxGetThinking = ctxAny.getThinkingLevel as (() => string | undefined) | undefined;
-		if (typeof ctxGetThinking === "function") {
-			const level = ctxGetThinking.call(ctx);
-			if (level) thinking = level;
-		}
-	}
-
+	// 4. Fallback to sessionManager getter
 	if (!thinking) {
 		const thinkingGetter = sessionManager?.getThinkingLevel as (() => string | undefined) | undefined;
 		if (typeof thinkingGetter === "function") {

@@ -149,11 +149,10 @@ describe("valuesFromExtensionContext", () => {
 			session: { configuredThinkingLevel: () => "off", thinkingLevel: "off" },
 		} as unknown as ExtensionContext;
 		expect(valuesFromExtensionContext(offCtx).thinking).toBe("off");
-
 		const autoCtx = {
 			model: { name: "Test Model", id: "test-model" },
-			session: { configuredThinkingLevel: () => "auto", isAutoThinking: true },
+			session: { configuredThinkingLevel: () => "auto", isAutoThinking: true, autoResolvedThinkingLevel: () => "high" },
 		} as unknown as ExtensionContext;
-		expect(valuesFromExtensionContext(autoCtx).thinking).toBe("auto");
+		expect(valuesFromExtensionContext(autoCtx).thinking).toBe("auto:high");
 	});
 });

@@ -179,7 +179,7 @@ export function formatRightPlain(snapshot: TimerSnapshot, now: Date): string {
 	return `${formatDuration(snapshot.toolMs)}/${formatDuration(snapshot.turnMs)}${DOT}${formatClock(now)}`;
 }
 
-export function rainbowThinking(level: "xhigh" | "max"): string {
+export function rainbowThinking(level: string): string {
 	let gradient = "";
 	let colorIndex = 0;
 	for (const character of level) {
@@ -191,25 +191,41 @@ export function rainbowThinking(level: "xhigh" | "max"): string {
 		colorIndex++;
 	}
 	gradient += "\x1b[39m";
-	return level === "max" ? `\x1b[1m${gradient}\x1b[22m` : gradient;
+	const isMax = level.endsWith("max") || level === "max";
+	return isMax ? `\x1b[1m${gradient}\x1b[22m` : gradient;
 }
 
 function resolveThinking(ctx: SegmentContext): string | null {
-	const sessionManager = ctx.session.sessionManager as unknown as Record<string, unknown> | undefined;
+	const session = ctx.session as unknown as {
+		isAutoThinking?: boolean;
+		configuredThinkingLevel?: () => string;
+		autoResolvedThinkingLevel?: () => string;
+		thinkingLevel?: string;
+		state?: { thinkingLevel?: string; model?: { thinking?: boolean } };
+		sessionManager?: unknown;
+	};
+	if (session.isAutoThinking || (typeof session.configuredThinkingLevel === "function" && session.configuredThinkingLevel() === "auto")) {
+		const resolved = typeof session.autoResolvedThinkingLevel === "function" ? session.autoResolvedThinkingLevel() : undefined;
+		const effective = resolved ?? session.thinkingLevel ?? session.state?.thinkingLevel ?? "high";
+		return `auto:${effective}`;
+	}
+	const sessionManager = session.sessionManager as Record<string, unknown> | undefined;
 	const thinkingGetter = sessionManager?.getThinkingLevel as (() => string | undefined) | undefined;
 	if (typeof thinkingGetter === "function") {
 		const level = thinkingGetter.call(sessionManager);
 		if (level) return level;
 	}
 	const state = ctx.session.state;
-	if (ctx.session.isAutoThinking) return ctx.session.autoResolvedThinkingLevel() ?? "auto";
 	if (state.thinkingLevel) return state.thinkingLevel;
 	if (state.model?.thinking) return state.thinkingLevel ?? "off";
 	return null;
 }
+
 function thinkingColor(level: string): ThemeColor {
-	switch (level) {
+	const base = level.startsWith("auto:") ? level.slice(5) : level;
+	switch (base) {
 		case "off":
+			return "thinkingOff";
 		case "auto":
 			return "thinkingOff";
 		case "minimal":
@@ -380,11 +396,11 @@ export function renderStatuslineRow(
 	const fixedWidth = visibleWidth(formatLeftPlain(fixedValues, 0));
 	const responsiveMax = Math.max(MIN_PATH_WIDTH, width - fixedWidth - rightWidth - LAYOUT_OVERHEAD);
 	const pathWidth = Math.max(MIN_PATH_WIDTH, Math.min(40, responsiveMax));
-
 	const rate = cacheHitRate(values);
 	const leftPartsColored: string[] = [fg("statusLineModel", values.model)];
 	if (values.thinking) {
-		if (values.thinking === "xhigh" || values.thinking === "max") {
+		const isRainbow = values.thinking.endsWith("xhigh") || values.thinking.endsWith("max");
+		if (isRainbow) {
 			leftPartsColored.push(rainbowThinking(values.thinking));
 		} else {
 			leftPartsColored.push(fg(thinkingColor(values.thinking), values.thinking));
@@ -431,7 +447,8 @@ export function valuesFromExtensionContext(ctx: ExtensionContext, pi?: Extension
 		const configured = typeof session.configuredThinkingLevel === "function" ? session.configuredThinkingLevel() : undefined;
 		if (configured === "auto" || session.isAutoThinking) {
 			const resolved = typeof session.autoResolvedThinkingLevel === "function" ? session.autoResolvedThinkingLevel() : undefined;
-			thinking = resolved ?? "auto";
+			const effective = resolved ?? session.thinkingLevel ?? session.state?.thinkingLevel ?? "high";
+			thinking = `auto:${effective}`;
 		} else if (configured) {
 			thinking = configured;
 		} else if (session.thinkingLevel) {
@@ -440,7 +457,6 @@ export function valuesFromExtensionContext(ctx: ExtensionContext, pi?: Extension
 			thinking = session.state.thinkingLevel;
 		}
 	}
-
 	if (!thinking && pi && typeof pi.getThinkingLevel === "function") {
 		const level = pi.getThinkingLevel();
 		if (level) thinking = level as string;

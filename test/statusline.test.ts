@@ -142,4 +142,18 @@ describe("valuesFromExtensionContext", () => {
 		expect(values.output).toBe(200);
 		expect(values.cacheRead).toBe(500);
 	});
+
+	test("extracts off and auto thinking levels correctly", () => {
+		const offCtx = {
+			model: { name: "Test Model", id: "test-model" },
+			session: { configuredThinkingLevel: () => "off", thinkingLevel: "off" },
+		} as unknown as ExtensionContext;
+		expect(valuesFromExtensionContext(offCtx).thinking).toBe("off");
+
+		const autoCtx = {
+			model: { name: "Test Model", id: "test-model" },
+			session: { configuredThinkingLevel: () => "auto", isAutoThinking: true },
+		} as unknown as ExtensionContext;
+		expect(valuesFromExtensionContext(autoCtx).thinking).toBe("auto");
+	});
 });

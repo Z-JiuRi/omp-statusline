@@ -164,7 +164,7 @@ export function formatCache(values: Pick<StatuslineValues, "cacheRead" | "cacheW
 
 export function formatLeftPlain(values: StatuslineValues, pathWidth: number): string {
 	const parts = [values.model];
-	if (values.thinking && values.thinking !== "off") parts.push(values.thinking);
+	if (values.thinking) parts.push(values.thinking);
 	parts.push(
 		truncatePathMiddle(normalizeStatusPath(values.cwd), pathWidth),
 		formatContext(values),
@@ -199,15 +199,14 @@ function resolveThinking(ctx: SegmentContext): string | null {
 	const thinkingGetter = sessionManager?.getThinkingLevel as (() => string | undefined) | undefined;
 	if (typeof thinkingGetter === "function") {
 		const level = thinkingGetter.call(sessionManager);
-		if (level && level !== "off") return level;
+		if (level) return level;
 	}
 	const state = ctx.session.state;
 	if (ctx.session.isAutoThinking) return ctx.session.autoResolvedThinkingLevel() ?? "auto";
-	if (state.thinkingLevel && (state.thinkingLevel as string) !== "off") return state.thinkingLevel;
+	if (state.thinkingLevel) return state.thinkingLevel;
 	if (state.model?.thinking) return state.thinkingLevel ?? "off";
 	return null;
 }
-
 function thinkingColor(level: string): ThemeColor {
 	switch (level) {
 		case "off":
@@ -384,7 +383,7 @@ export function renderStatuslineRow(
 
 	const rate = cacheHitRate(values);
 	const leftPartsColored: string[] = [fg("statusLineModel", values.model)];
-	if (values.thinking && values.thinking !== "off") {
+	if (values.thinking) {
 		if (values.thinking === "xhigh" || values.thinking === "max") {
 			leftPartsColored.push(rainbowThinking(values.thinking));
 		} else {
@@ -433,18 +432,18 @@ export function valuesFromExtensionContext(ctx: ExtensionContext, pi?: Extension
 		if (configured === "auto" || session.isAutoThinking) {
 			const resolved = typeof session.autoResolvedThinkingLevel === "function" ? session.autoResolvedThinkingLevel() : undefined;
 			thinking = resolved ?? "auto";
-		} else if (configured && configured !== "off") {
+		} else if (configured) {
 			thinking = configured;
-		} else if (session.thinkingLevel && session.thinkingLevel !== "off") {
+		} else if (session.thinkingLevel) {
 			thinking = session.thinkingLevel;
-		} else if (session.state?.thinkingLevel && session.state.thinkingLevel !== "off") {
+		} else if (session.state?.thinkingLevel) {
 			thinking = session.state.thinkingLevel;
 		}
 	}
 
 	if (!thinking && pi && typeof pi.getThinkingLevel === "function") {
 		const level = pi.getThinkingLevel();
-		if (level && (level as string) !== "off") thinking = level as string;
+		if (level) thinking = level as string;
 	}
 
 	if (!thinking) {
@@ -452,7 +451,7 @@ export function valuesFromExtensionContext(ctx: ExtensionContext, pi?: Extension
 		const ctxGetThinking = ctxAny.getThinkingLevel as (() => string | undefined) | undefined;
 		if (typeof ctxGetThinking === "function") {
 			const level = ctxGetThinking.call(ctx);
-			if (level && level !== "off") thinking = level;
+			if (level) thinking = level;
 		}
 	}
 
@@ -460,7 +459,7 @@ export function valuesFromExtensionContext(ctx: ExtensionContext, pi?: Extension
 		const thinkingGetter = sessionManager?.getThinkingLevel as (() => string | undefined) | undefined;
 		if (typeof thinkingGetter === "function") {
 			const level = thinkingGetter.call(sessionManager);
-			if (level && level !== "off") thinking = level;
+			if (level) thinking = level;
 		}
 	}
 

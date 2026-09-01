@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { SEGMENTS, type SegmentContext } from "@oh-my-pi/pi-coding-agent/modes/components/status-line/segments";
 import { theme, type ThemeColor } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
 import { visibleWidth } from "@oh-my-pi/pi-tui";
@@ -343,5 +344,101 @@ export function installStatuslineManager(): StatuslineBinding {
 			const host = SEGMENTS as typeof SEGMENTS & Record<PropertyKey, unknown>;
 			if (host[PATCH_KEY] === registry) delete host[PATCH_KEY];
 		},
+	};
+}
+
+export function renderStatuslineRow(
+	values: StatuslineValues,
+	snapshot: TimerSnapshot,
+	width: number,
+	customTheme?: { fg(color: ThemeColor, text: string): string },
+): string {
+	const activeTheme = customTheme ?? theme;
+	const fg = (color: ThemeColor, text: string): string => {
+		try {
+			return activeTheme?.fg?.(color, text) ?? text;
+		} catch {
+			return text;
+		}
+	};
+	const separator = fg("statusLineSep", DOT);
+
+	const now = new Date();
+	const timersText = `${formatDuration(snapshot.toolMs)}/${formatDuration(snapshot.turnMs)}`;
+	const clockText = formatClock(now);
+	const rightPlain = `${timersText}${DOT}${clockText}`;
+	const rightColored = `${fg("statusLineOutput", timersText)}${separator}${fg("muted", clockText)}`;
+	const rightWidth = visibleWidth(rightPlain);
+
+	const fixedValues = { ...values, cwd: "" };
+	const fixedWidth = visibleWidth(formatLeftPlain(fixedValues, 0));
+	const responsiveMax = Math.max(MIN_PATH_WIDTH, width - fixedWidth - rightWidth - LAYOUT_OVERHEAD);
+	const pathWidth = Math.max(MIN_PATH_WIDTH, Math.min(40, responsiveMax));
+
+	const rate = cacheHitRate(values);
+	const leftPartsColored: string[] = [fg("statusLineModel", values.model)];
+	if (values.thinking) {
+		if (values.thinking === "xhigh" || values.thinking === "max") {
+			leftPartsColored.push(rainbowThinking(values.thinking));
+		} else {
+			leftPartsColored.push(fg(thinkingColor(values.thinking), values.thinking));
+		}
+	}
+	leftPartsColored.push(
+		fg("statusLinePath", truncatePathMiddle(normalizeStatusPath(values.cwd), pathWidth)),
+		fg(contextColor(values.contextPercent), formatContext(values)),
+		fg("statusLineSpend", `In ${formatCompactNumber(values.input)}`),
+		fg(cacheColor(rate), formatCache(values)),
+		fg("statusLineOutput", `Out ${formatCompactNumber(values.output)}`),
+	);
+
+	const leftColored = leftPartsColored.join(separator);
+	const leftPlain = formatLeftPlain(values, pathWidth);
+	const leftWidth = visibleWidth(leftPlain);
+
+	const pad = Math.max(1, width - leftWidth - rightWidth);
+	return `${leftColored}${" ".repeat(pad)}${rightColored}`;
+}
+
+export function valuesFromExtensionContext(ctx: ExtensionContext): StatuslineValues {
+	const usage = typeof ctx.getContextUsage === "function" ? ctx.getContextUsage() : undefined;
+	const sessionManager = ctx.sessionManager as Record<string, unknown> | undefined;
+	const statsGetter = sessionManager?.getUsageStatistics as (() => Record<string, number>) | undefined;
+	const stats = typeof statsGetter === "function" ? statsGetter.call(sessionManager) : {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+	};
+
+	let thinking: string | null = null;
+	const thinkingGetter = sessionManager?.getThinkingLevel as (() => string | undefined) | undefined;
+	if (typeof thinkingGetter === "function") {
+		const level = thinkingGetter.call(sessionManager);
+		if (level && level !== "off") thinking = level;
+	}
+	if (!thinking) {
+		const session = (ctx as unknown as { session?: { state?: { thinkingLevel?: string; model?: { thinking?: boolean } }; isAutoThinking?: boolean; autoResolvedThinkingLevel?: () => string } }).session;
+		const sessionState = session?.state;
+		if (sessionState?.model?.thinking) {
+			if (session?.isAutoThinking && typeof session?.autoResolvedThinkingLevel === "function") {
+				thinking = session.autoResolvedThinkingLevel() ?? "auto";
+			} else {
+				thinking = sessionState.thinkingLevel ?? "off";
+			}
+		}
+	}
+
+	return {
+		model: ctx.model?.name || ctx.model?.id || "no-model",
+		thinking,
+		cwd: ctx.cwd || process.cwd(),
+		contextPercent: usage?.percent ?? null,
+		contextTokens: usage?.tokens ?? 0,
+		contextWindow: usage?.contextWindow ?? ctx.model?.contextWindow ?? 0,
+		input: stats.input ?? 0,
+		output: stats.output ?? 0,
+		cacheRead: stats.cacheRead ?? 0,
+		cacheWrite: stats.cacheWrite ?? 0,
 	};
 }

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { SEGMENTS } from "@oh-my-pi/pi-coding-agent/modes/components/status-line/segments";
 import {
 	cacheColor,
@@ -10,7 +11,9 @@ import {
 	formatRightPlain,
 	installStatuslineManager,
 	rainbowThinking,
+	renderStatuslineRow,
 	truncatePathMiddle,
+	valuesFromExtensionContext,
 	type StatuslineValues,
 } from "../src/statusline";
 
@@ -108,5 +111,35 @@ describe("segment patch lifecycle", () => {
 		expect(SEGMENTS.path.render).toBe(installedPath);
 		second.dispose();
 		expect(SEGMENTS.path.render).toBe(originalPath);
+	});
+});
+
+describe("renderStatuslineRow", () => {
+	test("renders a full row with left and right sections separated by spaces", () => {
+		const row = renderStatuslineRow(SAMPLE_VALUES, { toolMs: 1200, turnMs: 8400 }, 160);
+		expect(row).toContain("Antigravity Gemini 3.7 Flash");
+		expect(row).toContain("1.2s/8.4s");
+		expect(row.length).toBeGreaterThan(50);
+	});
+});
+
+describe("valuesFromExtensionContext", () => {
+	test("extracts fallback values safely from minimal ExtensionContext", () => {
+		const fakeCtx = {
+			model: { name: "Test Model", id: "test-model", contextWindow: 128000 },
+			cwd: "/mock/cwd",
+			getContextUsage: () => ({ percent: 15.5, tokens: 20000, contextWindow: 128000 }),
+			sessionManager: {
+				getUsageStatistics: () => ({ input: 1000, output: 200, cacheRead: 500, cacheWrite: 100 }),
+				getThinkingLevel: () => "high",
+			},
+		} as unknown as ExtensionContext;
+		const values = valuesFromExtensionContext(fakeCtx);
+		expect(values.model).toBe("Test Model");
+		expect(values.thinking).toBe("high");
+		expect(values.contextPercent).toBe(15.5);
+		expect(values.input).toBe(1000);
+		expect(values.output).toBe(200);
+		expect(values.cacheRead).toBe(500);
 	});
 });

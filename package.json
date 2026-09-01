@@ -1,6 +1,6 @@
 {
   "name": "omp-statusline",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Complete managed status line for Oh My Pi",
   "type": "module",
   "main": "./src/index.ts",

@@ -304,12 +304,12 @@ function createRegistry(): PatchRegistry {
 	const hidden: Renderer = () => ({ content: "", visible: false });
 	registry.installed = {
 		model: hidden,
-		path: ctx => renderLeft(ctx, registry),
+		path: hidden,
 		context_pct: hidden,
 		token_in: hidden,
 		cache_hit: hidden,
 		token_out: hidden,
-		time: ctx => renderRight(ctx, registry),
+		time: hidden,
 	};
 	for (const id of MANAGED_IDS) SEGMENTS[id].render = registry.installed[id];
 	return registry;

@@ -195,10 +195,17 @@ export function rainbowThinking(level: "xhigh" | "max"): string {
 }
 
 function resolveThinking(ctx: SegmentContext): string | null {
+	const sessionManager = ctx.session.sessionManager as unknown as Record<string, unknown> | undefined;
+	const thinkingGetter = sessionManager?.getThinkingLevel as (() => string | undefined) | undefined;
+	if (typeof thinkingGetter === "function") {
+		const level = thinkingGetter.call(sessionManager);
+		if (level && level !== "off") return level;
+	}
 	const state = ctx.session.state;
-	if (!state.model?.thinking) return null;
 	if (ctx.session.isAutoThinking) return ctx.session.autoResolvedThinkingLevel() ?? "auto";
-	return state.thinkingLevel ?? "off";
+	if (state.thinkingLevel && (state.thinkingLevel as string) !== "off") return state.thinkingLevel;
+	if (state.model?.thinking) return state.thinkingLevel ?? "off";
+	return null;
 }
 
 function thinkingColor(level: string): ThemeColor {

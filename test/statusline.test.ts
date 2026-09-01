@@ -41,7 +41,7 @@ describe("compact formatting", () => {
 
 	test("formats the requested complete statusline text", () => {
 		expect(formatLeftPlain(SAMPLE_VALUES, 40)).toBe(
-			"Antigravity Gemini 3.7 Flash · high · /path/to/dir · 2.5%/1M · In 33K · CH 1.02M/52.93% · Out 942",
+			"Antigravity Gemini 3.7 Flash · high · /path/to/dir · 2.5%/1M · In 33K · CH 1.02M/52.9% · Out 942",
 		);
 		expect(formatRightPlain({ toolMs: 5_500, turnMs: 29_600 }, new Date(2026, 7, 30, 21, 54))).toBe(
 			"5.5s/29.6s · 21:54",

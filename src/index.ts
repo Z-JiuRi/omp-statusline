@@ -16,7 +16,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
 				"omp-statusline",
 				(_tui: unknown, theme: Theme) => ({
 					render(width: number): string[] {
-						const values = valuesFromExtensionContext(ctx);
+						const values = valuesFromExtensionContext(ctx, pi);
 						const snapshot = timers.snapshot();
 						return [renderStatuslineRow(values, snapshot, width, theme)];
 					},
@@ -31,7 +31,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
 			try {
 				ctx.ui.setFooter((_tui: unknown, theme: Theme) => ({
 					render(width: number): string[] {
-						const values = valuesFromExtensionContext(ctx);
+						const values = valuesFromExtensionContext(ctx, pi);
 						const snapshot = timers.snapshot();
 						return [renderStatuslineRow(values, snapshot, width, theme)];
 					},

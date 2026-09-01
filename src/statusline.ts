@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { SEGMENTS, type SegmentContext } from "@oh-my-pi/pi-coding-agent/modes/components/status-line/segments";
 import { theme, type ThemeColor } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
 import { visibleWidth } from "@oh-my-pi/pi-tui";
@@ -159,12 +159,12 @@ export function formatContext(values: Pick<StatuslineValues, "contextPercent" | 
 
 export function formatCache(values: Pick<StatuslineValues, "cacheRead" | "cacheWrite" | "input">): string {
 	const rate = cacheHitRate(values);
-	return `CH ${formatCompactNumber(values.cacheRead)}/${rate === null ? "—" : `${rate.toFixed(2)}%`}`;
+	return `CH ${formatCompactNumber(values.cacheRead)}/${rate === null ? "—" : `${rate.toFixed(1)}%`}`;
 }
 
 export function formatLeftPlain(values: StatuslineValues, pathWidth: number): string {
 	const parts = [values.model];
-	if (values.thinking) parts.push(values.thinking);
+	if (values.thinking && values.thinking !== "off") parts.push(values.thinking);
 	parts.push(
 		truncatePathMiddle(normalizeStatusPath(values.cwd), pathWidth),
 		formatContext(values),
@@ -384,7 +384,7 @@ export function renderStatuslineRow(
 
 	const rate = cacheHitRate(values);
 	const leftPartsColored: string[] = [fg("statusLineModel", values.model)];
-	if (values.thinking) {
+	if (values.thinking && values.thinking !== "off") {
 		if (values.thinking === "xhigh" || values.thinking === "max") {
 			leftPartsColored.push(rainbowThinking(values.thinking));
 		} else {
@@ -407,9 +407,9 @@ export function renderStatuslineRow(
 	return `${leftColored}${" ".repeat(pad)}${rightColored}`;
 }
 
-export function valuesFromExtensionContext(ctx: ExtensionContext): StatuslineValues {
+export function valuesFromExtensionContext(ctx: ExtensionContext, pi?: ExtensionAPI): StatuslineValues {
 	const usage = typeof ctx.getContextUsage === "function" ? ctx.getContextUsage() : undefined;
-	const sessionManager = ctx.sessionManager as Record<string, unknown> | undefined;
+	const sessionManager = ctx.sessionManager as unknown as Record<string, unknown> | undefined;
 	const statsGetter = sessionManager?.getUsageStatistics as (() => Record<string, number>) | undefined;
 	const stats = typeof statsGetter === "function" ? statsGetter.call(sessionManager) : {
 		input: 0,
@@ -419,20 +419,38 @@ export function valuesFromExtensionContext(ctx: ExtensionContext): StatuslineVal
 	};
 
 	let thinking: string | null = null;
-	const thinkingGetter = sessionManager?.getThinkingLevel as (() => string | undefined) | undefined;
-	if (typeof thinkingGetter === "function") {
-		const level = thinkingGetter.call(sessionManager);
-		if (level && level !== "off") thinking = level;
+	if (pi && typeof pi.getThinkingLevel === "function") {
+		const level = pi.getThinkingLevel();
+		if (level && (level as string) !== "off") thinking = level as string;
 	}
 	if (!thinking) {
-		const session = (ctx as unknown as { session?: { state?: { thinkingLevel?: string; model?: { thinking?: boolean } }; isAutoThinking?: boolean; autoResolvedThinkingLevel?: () => string } }).session;
-		const sessionState = session?.state;
-		if (sessionState?.model?.thinking) {
-			if (session?.isAutoThinking && typeof session?.autoResolvedThinkingLevel === "function") {
+		const ctxAny = ctx as unknown as Record<string, unknown>;
+		const ctxGetThinking = ctxAny.getThinkingLevel as (() => string | undefined) | undefined;
+		if (typeof ctxGetThinking === "function") {
+			const level = ctxGetThinking.call(ctx);
+			if (level && level !== "off") thinking = level;
+		}
+	}
+	if (!thinking) {
+		const session = (ctx as unknown as { session?: { thinkingLevel?: string; state?: { thinkingLevel?: string; model?: { thinking?: boolean } }; isAutoThinking?: boolean; autoResolvedThinkingLevel?: () => string; configuredThinkingLevel?: () => string } }).session;
+		if (session) {
+			if (session.thinkingLevel && session.thinkingLevel !== "off") {
+				thinking = session.thinkingLevel;
+			} else if (session.isAutoThinking && typeof session.autoResolvedThinkingLevel === "function") {
 				thinking = session.autoResolvedThinkingLevel() ?? "auto";
-			} else {
-				thinking = sessionState.thinkingLevel ?? "off";
+			} else if (session.state?.thinkingLevel && session.state.thinkingLevel !== "off") {
+				thinking = session.state.thinkingLevel;
+			} else if (typeof session.configuredThinkingLevel === "function") {
+				const configured = session.configuredThinkingLevel();
+				if (configured && configured !== "off") thinking = configured;
 			}
+		}
+	}
+	if (!thinking) {
+		const thinkingGetter = sessionManager?.getThinkingLevel as (() => string | undefined) | undefined;
+		if (typeof thinkingGetter === "function") {
+			const level = thinkingGetter.call(sessionManager);
+			if (level && level !== "off") thinking = level;
 		}
 	}
 

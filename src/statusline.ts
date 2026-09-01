@@ -417,12 +417,36 @@ export function valuesFromExtensionContext(ctx: ExtensionContext, pi?: Extension
 		cacheRead: 0,
 		cacheWrite: 0,
 	};
-
 	let thinking: string | null = null;
-	if (pi && typeof pi.getThinkingLevel === "function") {
+	const session = (ctx as unknown as {
+		session?: {
+			isAutoThinking?: boolean;
+			configuredThinkingLevel?: () => string;
+			autoResolvedThinkingLevel?: () => string;
+			thinkingLevel?: string;
+			state?: { thinkingLevel?: string };
+		};
+	}).session;
+
+	if (session) {
+		const configured = typeof session.configuredThinkingLevel === "function" ? session.configuredThinkingLevel() : undefined;
+		if (configured === "auto" || session.isAutoThinking) {
+			const resolved = typeof session.autoResolvedThinkingLevel === "function" ? session.autoResolvedThinkingLevel() : undefined;
+			thinking = resolved ?? "auto";
+		} else if (configured && configured !== "off") {
+			thinking = configured;
+		} else if (session.thinkingLevel && session.thinkingLevel !== "off") {
+			thinking = session.thinkingLevel;
+		} else if (session.state?.thinkingLevel && session.state.thinkingLevel !== "off") {
+			thinking = session.state.thinkingLevel;
+		}
+	}
+
+	if (!thinking && pi && typeof pi.getThinkingLevel === "function") {
 		const level = pi.getThinkingLevel();
 		if (level && (level as string) !== "off") thinking = level as string;
 	}
+
 	if (!thinking) {
 		const ctxAny = ctx as unknown as Record<string, unknown>;
 		const ctxGetThinking = ctxAny.getThinkingLevel as (() => string | undefined) | undefined;
@@ -431,21 +455,7 @@ export function valuesFromExtensionContext(ctx: ExtensionContext, pi?: Extension
 			if (level && level !== "off") thinking = level;
 		}
 	}
-	if (!thinking) {
-		const session = (ctx as unknown as { session?: { thinkingLevel?: string; state?: { thinkingLevel?: string; model?: { thinking?: boolean } }; isAutoThinking?: boolean; autoResolvedThinkingLevel?: () => string; configuredThinkingLevel?: () => string } }).session;
-		if (session) {
-			if (session.thinkingLevel && session.thinkingLevel !== "off") {
-				thinking = session.thinkingLevel;
-			} else if (session.isAutoThinking && typeof session.autoResolvedThinkingLevel === "function") {
-				thinking = session.autoResolvedThinkingLevel() ?? "auto";
-			} else if (session.state?.thinkingLevel && session.state.thinkingLevel !== "off") {
-				thinking = session.state.thinkingLevel;
-			} else if (typeof session.configuredThinkingLevel === "function") {
-				const configured = session.configuredThinkingLevel();
-				if (configured && configured !== "off") thinking = configured;
-			}
-		}
-	}
+
 	if (!thinking) {
 		const thinkingGetter = sessionManager?.getThinkingLevel as (() => string | undefined) | undefined;
 		if (typeof thinkingGetter === "function") {
